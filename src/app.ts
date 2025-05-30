@@ -5,16 +5,18 @@ import authRoutes from './modules/auth/auth.routes';
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from './config/swagger';
 import cookieParser from 'cookie-parser';
-import { AUTH_ROUTES } from './config/api.constants';
+import { AUTH_ROUTES } from './constants/api.constants';
 import { rateLimiterMiddleware } from './middleware/rateLimiter';
+import { errorHandler } from './middleware/error/error.middleware';
 import logger from './config/logger';
+import createError from 'http-errors';
 
 const app = express();
 
 // Security middleware
 app.use(helmet());
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     credentials: true
 }));
 
@@ -43,7 +45,7 @@ app.use(AUTH_ROUTES.BASE, authRoutes);
 
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
-    res.status(200).json({ status: 'healthy' });
+    res.status(200).json({ status: 'ok' });
 });
 
 // Root endpoint
@@ -51,31 +53,12 @@ app.get('/', (_req: Request, res: Response) => {
     res.send('API is running!!');
 });
 
-// Global error handler
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    logger.error('Unhandled error:', {
-        error: err.message,
-        stack: err.stack,
-        path: req.path,
-        method: req.method
-    });
-
-    res.status(err.status || 500).json({
-        status: 'error',
-        code: err.code || 'INTERNAL_SERVER_ERROR',
-        message: process.env.NODE_ENV === 'production' 
-            ? 'An unexpected error occurred' 
-            : err.message
-    });
-});
-
 // 404 handler
-app.use((_req: Request, res: Response) => {
-    res.status(404).json({
-        status: 'error',
-        code: 'NOT_FOUND',
-        message: 'Resource not found'
-    });
+app.use((_req: Request, _res: Response, next: NextFunction) => {
+    next(createError(404, 'Route not found'));
 });
+
+// Global error handler
+app.use(errorHandler);
 
 export default app;

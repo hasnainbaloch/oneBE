@@ -1,6 +1,6 @@
 import swaggerJSDoc from 'swagger-jsdoc';
 import dotenv from 'dotenv';
-import { API_VERSION } from './api.constants';
+
 dotenv.config();
 
 const options: swaggerJSDoc.Options = {
@@ -38,7 +38,7 @@ const options: swaggerJSDoc.Options = {
       }
     ]
   },
-  apis: ['src/doc/swagger/*.ts']
+  apis: ['src/api-docs/*.ts']
 };
 
 const swaggerSpec = swaggerJSDoc(options);

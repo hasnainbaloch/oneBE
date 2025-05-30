@@ -1,8 +1,15 @@
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import redisClient from '../../config/redis';
-import { IUser } from '../../types/user.types';
-import { AccessTokenPayload, RefreshTokenPayload, TokenFamily } from '../../types/auth.types';
+import { IUserDocument } from '../../interfaces/user.interface';
+import { 
+    AccessTokenPayload, 
+    RefreshTokenPayload, 
+    TokenFamily,
+    accessTokenPayloadSchema,
+    refreshTokenPayloadSchema,
+    tokenFamilySchema 
+} from '../../interfaces/auth.interface';
 
 
 // Generate a new token family
@@ -13,12 +20,12 @@ export const createTokenFamily = async (userId: string): Promise<string> => {
 };
 
 // Generate access token
-export const generateAccessToken = (user: IUser): string => {
-    const payload: AccessTokenPayload = {
+export const generateAccessToken = (user: IUserDocument): string => {
+    const payload = accessTokenPayloadSchema.parse({
         id: user._id.toString(),
         email: user.email,
         role: user.role
-    };
+    });
 
     return jwt.sign(
         payload,
@@ -28,7 +35,7 @@ export const generateAccessToken = (user: IUser): string => {
 };
 
 // Generate refresh token with family tracking
-export const generateRefreshToken = async (user: IUser): Promise<{ token: string, tokenId: string }> => {
+export const generateRefreshToken = async (user: IUserDocument): Promise<{ token: string, tokenId: string }> => {
     // Get or create family ID
     let familyId = await redisClient.get(`token:family:${user._id}`);
     if (!familyId) {
@@ -38,12 +45,12 @@ export const generateRefreshToken = async (user: IUser): Promise<{ token: string
     // Create a unique token ID
     const tokenId = uuidv4();
 
-    // Create the token
-    const payload: RefreshTokenPayload = {
+    // Create and validate the token payload
+    const payload = refreshTokenPayloadSchema.parse({
         id: user._id.toString(),
         tokenId,
         familyId
-    };
+    });
 
     const token = jwt.sign(
         payload,
@@ -51,12 +58,12 @@ export const generateRefreshToken = async (user: IUser): Promise<{ token: string
         { expiresIn: '7d' }
     );
 
-    // Store token in Redis with expiration (7 days in seconds)
-    const tokenData: TokenFamily = {
+    // Create and validate the token family data
+    const tokenData = tokenFamilySchema.parse({
         userId: user._id.toString(),
         familyId,
         currentTokenId: tokenId
-    };
+    });
 
     await redisClient.set(
         `token:refresh:${tokenId}`,
@@ -71,10 +78,11 @@ export const generateRefreshToken = async (user: IUser): Promise<{ token: string
 };
 
 // Verify and rotate refresh token
-export const verifyAndRotateRefreshToken = async (refreshToken: string): Promise<{ user: IUser, newRefreshToken: string } | null> => {
+export const verifyAndRotateRefreshToken = async (refreshToken: string): Promise<{ user: IUserDocument, newRefreshToken: string } | null> => {
     try {
         // Verify the token
-        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as RefreshTokenPayload;
+        const decodedRaw = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string);
+        const decoded = refreshTokenPayloadSchema.parse(decodedRaw);
 
         // Get token data from Redis
         const tokenDataStr = await redisClient.get(`token:refresh:${decoded.tokenId}`);
@@ -83,7 +91,7 @@ export const verifyAndRotateRefreshToken = async (refreshToken: string): Promise
             return null;
         }
 
-        const parsedTokenData: TokenFamily = JSON.parse(tokenDataStr);
+        const parsedTokenData = tokenFamilySchema.parse(JSON.parse(tokenDataStr));
 
         // Check if this is the current token for the family
         const currentTokenId = await redisClient.get(`token:current:${parsedTokenData.familyId}`);
@@ -139,7 +147,8 @@ export const invalidateAllUserTokens = async (userId: string): Promise<void> => 
 export const isRefreshTokenValid = async (refreshToken: string): Promise<boolean> => {
     try {
         // Verify the token
-        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as RefreshTokenPayload;
+        const decodedRaw = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string);
+        const decoded = refreshTokenPayloadSchema.parse(decodedRaw);
         
         // Get token data from Redis
         const tokenDataStr = await redisClient.get(`token:refresh:${decoded.tokenId}`);
@@ -148,7 +157,7 @@ export const isRefreshTokenValid = async (refreshToken: string): Promise<boolean
             return false;
         }
 
-        const parsedTokenData: TokenFamily = JSON.parse(tokenDataStr);
+        const parsedTokenData = tokenFamilySchema.parse(JSON.parse(tokenDataStr));
 
         // Check if this is the current token for the family
         const currentTokenId = await redisClient.get(`token:current:${parsedTokenData.familyId}`);

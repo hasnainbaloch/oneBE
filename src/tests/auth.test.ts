@@ -3,7 +3,7 @@ import app from '../app';
 import User from '../modules/users/user.model';
 import mongoose from 'mongoose';
 import redisClient from '../config/redis';
-import { AUTH_ROUTES } from '../config/api.constants';
+import { AUTH_ROUTES } from '../constants/api.constants';
 
 describe('Authentication Flow', () => {
     const testUser = {
